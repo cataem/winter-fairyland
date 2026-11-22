@@ -15,7 +15,7 @@ Light mode shows the same village at blue hour; dark mode shows it at night.
 At the prompt of a Claude Code terminal session:
 
 ```
-/plugin install winter-fairyland --marketplace <your-github-username>/winter-fairyland
+/plugin install winter-fairyland --marketplace cataem/winter-fairyland
 ```
 
 Answer `y` to add the marketplace, then pick a scope (user scope is first, chosen with Enter).
@@ -23,10 +23,10 @@ Answer `y` to add the marketplace, then pick a scope (user scope is first, chose
 From a shell:
 
 ```
-claude plugin install winter-fairyland --marketplace <your-github-username>/winter-fairyland
+claude plugin install winter-fairyland --marketplace cataem/winter-fairyland
 ```
 
-In the desktop app, where `/plugin` does not run: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `<your-github-username>/winter-fairyland`, then **Add plugin**.
+In the desktop app, where `/plugin` does not run: click **+** next to the prompt box, then **Plugins**, **Add marketplace** with `cataem/winter-fairyland`, then **Add plugin**.
 
 ## The /snow command
 
