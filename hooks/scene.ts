@@ -436,6 +436,8 @@ const BASE_CSS =
   `@keyframes shoot{0%{transform:translate(0,0);opacity:0}3%{opacity:1}10%{transform:translate(-300px,190px);opacity:0}100%{transform:translate(-300px,190px);opacity:0}}` +
   `.deer{animation:peek 1.8s cubic-bezier(.2,.8,.25,1) both}` +
   `@keyframes peek{from{transform:translate(0,260px)}to{transform:translate(0,0)}}` +
+  `.deer.out{animation:sink 1.5s cubic-bezier(.55,0,.75,.35) forwards}` +
+  `@keyframes sink{from{transform:translate(0,0)}to{transform:translate(0,280px)}}` +
   `.nod{transform-box:fill-box;transform-origin:30% 80%;animation:nod 6s ease-in-out 1.8s infinite alternate}` +
   `@keyframes nod{from{transform:rotate(0deg)}to{transform:rotate(-5deg)}}` +
   `.eyes{transform-box:fill-box;transform-origin:50% 50%;animation:blink 5s linear 2s infinite}` +
@@ -495,7 +497,7 @@ export function scene(w: Weather): string {
     CABINS.slice(4).map(c => cabin(c, cap)).join('') +
     NEAR +
     drift(w.drift) +
-    (w.waiting ? REINDEER : '') +
+    (w.waiting ? REINDEER : w.leaving ? REINDEER.replace('class="deer"', 'class="deer out"') : '') +
     BANK +
     fall.svg +
     `</svg>`

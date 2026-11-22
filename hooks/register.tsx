@@ -9,8 +9,8 @@ const SCENE = 'winter-fairyland'
 
 const weather = atom(
   { plugin: 'winter-fairyland', key: 'weather' } as const,
-  { snow: 1, drift: 0, waiting: false },
-  { shape: 'weather-1' },
+  { snow: 1, drift: 0, waiting: false, leaving: false },
+  { shape: 'weather-2' },
 )
 
 // Icy blue by day, moonlit snow by night.
@@ -56,6 +56,13 @@ let toolsRunning = 0
 let activity = 0 // recent bursts of steps and tool calls, decaying
 let contextShare = 0 // 0..1 of the context window
 let waiting = false
+// After the person answers, the reindeer sinks behind the snowbank for a
+// moment before it leaves the scene.
+let leaving = false
+let leaveTimer: { cancel: () => void } | null = null
+// The weather held while it sinks, so no redraw restarts the animation.
+let frozen: Weather | null = null
+const SINK_MS = 1800
 // While /snow pins or demos the weather, this wins over the live figures.
 let pinned: Weather | null = null
 let demoTimers: { cancel: () => void }[] = []
@@ -64,13 +71,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 function target(): Weather {
   if (pinned !== null) return pinned
+  if (leaving && !waiting && frozen !== null) return frozen
   const work = clamp(
     (mainRunning ? 0.3 : 0) + Math.min(0.3, agentsRunning * 0.15) + Math.min(0.3, toolsRunning * 0.12) + activity,
     0,
     1,
   )
   const snow = Math.round(6 * clamp(0.65 * work + 0.35 * contextShare, 0, 1))
-  return { snow, drift: Math.round(5 * contextShare), waiting }
+  return { snow, drift: Math.round(5 * contextShare), waiting, leaving: leaving && !waiting }
 }
 
 
@@ -78,9 +86,32 @@ function target(): Weather {
 // and notifications, and the weather must never hold any of those up.
 async function refresh($: EngineInterface): Promise<void> {
   try {
-    const next = target()
+    let next = target()
     const now = await read($, weather)
-    if (now.snow === next.snow && now.drift === next.drift && now.waiting === next.waiting) {
+    if (now.waiting && !next.waiting && pinned === null) {
+      // it was up and is no longer wanted: let it sink first
+      leaving = true
+      frozen = { snow: now.snow, drift: now.drift, waiting: false, leaving: true }
+      leaveTimer?.cancel()
+      leaveTimer = $.clock.after(SINK_MS, () => {
+        leaving = false
+        frozen = null
+        leaveTimer = null
+        void refresh($)
+      })
+      next = target()
+    } else if (next.waiting && leaveTimer !== null) {
+      leaveTimer.cancel()
+      leaveTimer = null
+      leaving = false
+      frozen = null
+    }
+    if (
+      now.snow === next.snow &&
+      now.drift === next.drift &&
+      now.waiting === next.waiting &&
+      now.leaving === next.leaving
+    ) {
       return
     }
     await update($, weather, () => next)
@@ -104,8 +135,8 @@ function stopDemo(): void {
 // Snowfall climbs 0 to 6 while the drift rises 0 to 5, then the snow eases
 // off over the deep drift, then live weather comes back.
 const DEMO: Weather[] = [
-  ...[0, 1, 2, 3, 4, 5, 6].map(s => ({ snow: s, drift: Math.round((s * 5) / 6), waiting: false })),
-  ...[5, 4, 3, 2, 1, 0].map(s => ({ snow: s, drift: 5, waiting: false })),
+  ...[0, 1, 2, 3, 4, 5, 6].map(s => ({ snow: s, drift: Math.round((s * 5) / 6), waiting: false, leaving: false })),
+  ...[5, 4, 3, 2, 1, 0].map(s => ({ snow: s, drift: 5, waiting: false, leaving: false })),
 ]
 const STEP_MS = 3500
 
@@ -217,7 +248,7 @@ export const register: Register = on => {
     }
     const nums = args.match(/^(\d)\s+(\d)$/)
     if (nums !== null) {
-      pinned = { snow: clamp(Number(nums[1]), 0, 6), drift: clamp(Number(nums[2]), 0, 5), waiting: false }
+      pinned = { snow: clamp(Number(nums[1]), 0, 6), drift: clamp(Number(nums[2]), 0, 5), waiting: false, leaving: false }
       await refresh($)
       return { text: `Pinned snowfall ${pinned.snow}/6, snowdrift ${pinned.drift}/5. "/snow live" to undo.` }
     }
