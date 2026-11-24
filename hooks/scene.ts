@@ -107,7 +107,8 @@ const i = (v: number) => Math.round(v)
 
 // A snow-laden spruce: drooping tiers with ragged tips, snow lit from the
 // right, shaded on the left. `h` from the trunk's foot to the tip.
-type SpruceOpts = { fill: string; lit?: string; shade?: string; seed: number; tiers?: number }
+// `snow` 0..5: how much snow has settled on it, following the context.
+type SpruceOpts = { fill: string; lit?: string; shade?: string; seed: number; tiers?: number; snow?: number }
 
 function spruce(x: number, base: number, h: number, o: SpruceOpts): string {
   const r = rng(o.seed)
@@ -132,12 +133,17 @@ function spruce(x: number, base: number, h: number, o: SpruceOpts): string {
   if (o.lit !== undefined) {
     let lit = ''
     let shade = ''
+    const sn = o.snow ?? 0
+    // deeper snow: wider clumps that sit higher and hang lower
+    const up = 0.7 + 0.08 * sn
+    const low = 0.36 - 0.05 * sn
     for (const { y, w: w0 } of rows) {
       const j = 0.85 + r() * 0.3
-      const w = w0 * (0.6 + r() * 0.35)
-      lit += `M${i(x + 0.1 * w)} ${i(y - 0.62 * s)}Q${i(x + 0.55 * w)} ${i(y - 0.75 * s * j)} ${i(x + 0.97 * w)} ${i(y)}Q${i(x + 0.6 * w)} ${i(y - 0.32 * s)} ${i(x + 0.1 * w)} ${i(y - 0.42 * s)}Z`
-      if (o.shade !== undefined) {
-        shade += `M${i(x - 0.1 * w)} ${i(y - 0.6 * s)}Q${i(x - 0.5 * w)} ${i(y - 0.68 * s * j)} ${i(x - 0.92 * w)} ${i(y - 0.02 * s)}Q${i(x - 0.55 * w)} ${i(y - 0.3 * s)} ${i(x - 0.1 * w)} ${i(y - 0.44 * s)}Z`
+      const w = w0 * Math.min(1.02, 0.45 + 0.11 * sn + r() * 0.3)
+      lit += `M${i(x + 0.1 * w)} ${i(y - (0.62 + 0.05 * sn) * s)}Q${i(x + 0.55 * w)} ${i(y - up * s * j)} ${i(x + 0.97 * w)} ${i(y)}Q${i(x + 0.6 * w)} ${i(y - low * s)} ${i(x + 0.1 * w)} ${i(y - (0.46 - 0.03 * sn) * s)}Z`
+      if (o.shade !== undefined && sn > 0) {
+        const v = w * 0.85
+        shade += `M${i(x - 0.1 * v)} ${i(y - (0.6 + 0.05 * sn) * s)}Q${i(x - 0.5 * v)} ${i(y - (up - 0.06) * s * j)} ${i(x - 0.92 * v)} ${i(y - 0.02 * s)}Q${i(x - 0.55 * v)} ${i(y - (low - 0.02) * s)} ${i(x - 0.1 * v)} ${i(y - (0.48 - 0.03 * sn) * s)}Z`
       }
     }
     out += `<path d="${lit}" fill="${o.lit}"/>`
@@ -167,7 +173,8 @@ function windowAt(cx: number, cy: number, w: number, h: number, s: number): stri
   )
 }
 
-function cabin(c: Cabin, cap: number): string {
+function cabin(c: Cabin, d: number): string {
+  const cap = 4 + d * 5
   const s = c.w / 200
   const top = c.base - c.h
   const ax = c.x + c.w / 2
@@ -219,8 +226,8 @@ function cabin(c: Cabin, cap: number): string {
   // roof edge and its snow slabs
   out += `<path d="M${i(lx)} ${i(ey)}L${i(ax)} ${i(ay)}L${i(rx)} ${i(ey)}" stroke="#1e1209" stroke-width="${i(11 * s)}" fill="none" stroke-linejoin="round"/>`
   out +=
-    `<path fill="url(#roofsnow)" d="M${i(ax)} ${i(ay - t)}L${i(lx - 9 * s)} ${i(ey - t * 0.55)}Q${i(lx - 20 * s)} ${i(ey + 4 * s)} ${i(lx - 2 * s)} ${i(ey + 10 * s)}L${i(ax)} ${i(ay + 6 * s)}Z` +
-    `M${i(ax)} ${i(ay - t)}L${i(rx + 9 * s)} ${i(ey - t * 0.55)}Q${i(rx + 20 * s)} ${i(ey + 4 * s)} ${i(rx + 2 * s)} ${i(ey + 10 * s)}L${i(ax)} ${i(ay + 6 * s)}Z"/>` +
+    `<path fill="url(#roofsnow)" d="M${i(ax)} ${i(ay - t)}L${i(lx - 9 * s)} ${i(ey - t * 0.55)}Q${i(lx - 20 * s)} ${i(ey + (4 + d * 2) * s)} ${i(lx - 2 * s)} ${i(ey + (10 + d * 3) * s)}L${i(ax)} ${i(ay + 6 * s)}Z` +
+    `M${i(ax)} ${i(ay - t)}L${i(rx + 9 * s)} ${i(ey - t * 0.55)}Q${i(rx + 20 * s)} ${i(ey + (4 + d * 2) * s)} ${i(rx + 2 * s)} ${i(ey + (10 + d * 3) * s)}L${i(ax)} ${i(ay + 6 * s)}Z"/>` +
     `<path d="M${i(lx - 9 * s)} ${i(ey - t * 0.55)}L${i(ax)} ${i(ay - t)}L${i(rx + 9 * s)} ${i(ey - t * 0.55)}" stroke="#ffffff" stroke-opacity=".7" stroke-width="${n(2.5 * s)}" fill="none"/>`
   // porch
   if (c.porch) {
@@ -243,8 +250,8 @@ function cabin(c: Cabin, cap: number): string {
   }
   // snow heaped at the foot of the walls
   out +=
-    `<ellipse cx="${i(c.x + 14 * s)}" cy="${i(c.base + 6 * s)}" rx="${i(44 * s)}" ry="${i(15 * s)}" fill="url(#mound)"/>` +
-    `<ellipse cx="${i(c.x + c.w - 14 * s)}" cy="${i(c.base + 6 * s)}" rx="${i(44 * s)}" ry="${i(15 * s)}" fill="url(#mound)"/>`
+    `<ellipse cx="${i(c.x + 14 * s)}" cy="${i(c.base + 6 * s)}" rx="${i((38 + 12 * d) * s)}" ry="${i((12 + 5 * d) * s)}" fill="url(#mound)"/>` +
+    `<ellipse cx="${i(c.x + c.w - 14 * s)}" cy="${i(c.base + 6 * s)}" rx="${i((38 + 12 * d) * s)}" ry="${i((12 + 5 * d) * s)}" fill="url(#mound)"/>`
   return out
 }
 
@@ -333,7 +340,7 @@ function mountains(): string {
   )
 }
 
-function forestBand(): string {
+function forestBand(d: number): string {
   const r = rng(21)
   let out = ''
   for (let k = 0; k < 60; k++) {
@@ -341,7 +348,7 @@ function forestBand(): string {
     const near = Math.abs(x - 800) < 140
     const base = 640 + r() * 46
     const h = (near ? 26 : 40) + r() * (near ? 26 : 70)
-    out += spruce(x, base, h, { fill: '#0e2140', lit: '#5c7eb0', seed: 100 + k, tiers: 5 })
+    out += spruce(x, base, h, { fill: '#0e2140', lit: '#5c7eb0', seed: 100 + k, tiers: 5, snow: d })
   }
   return out
 }
@@ -351,10 +358,12 @@ const MID_TREES: [number, number, number][] = [
   [1280, 712, 330], [1340, 716, 270], [1235, 706, 220],
 ]
 
-function tracks(): string {
+// Tyre tracks fill in as the snow deepens.
+function tracks(d: number): string {
+  const f = 1 - 0.16 * d
   return (
-    `<path d="M800 660C770 760 650 880 520 1000M804 660C786 760 704 880 616 1000M808 660C824 760 884 880 956 1000M812 660C842 760 962 880 1064 1000" stroke="#5f79a8" stroke-opacity=".6" stroke-width="7" fill="none"/>` +
-    `<path d="M803 660C773 760 655 880 527 1000M815 660C845 760 967 880 1071 1000" stroke="#f2f6ff" stroke-opacity=".45" stroke-width="2" fill="none"/>`
+    `<path d="M800 660C770 760 650 880 520 1000M804 660C786 760 704 880 616 1000M808 660C824 760 884 880 956 1000M812 660C842 760 962 880 1064 1000" stroke="#5f79a8" stroke-opacity="${n(0.6 * f)}" stroke-width="7" fill="none"/>` +
+    `<path d="M803 660C773 760 655 880 527 1000M815 660C845 760 967 880 1071 1000" stroke="#f2f6ff" stroke-opacity="${n(0.45 * f)}" stroke-width="2" fill="none"/>`
   )
 }
 
@@ -386,7 +395,7 @@ function fence(): string {
 }
 
 function drift(level: number): string {
-  const t = H - (34 + level * 24)
+  const t = H - (34 + level * 30)
   return `<path class="drift" d="M0 ${t}C200 ${t - 18} 400 ${t + 10} 600 ${t - 6}S1000 ${t - 22} 1200 ${t}S1500 ${t - 14} 1600 ${t - 2}V1000H0Z"/>`
 }
 
@@ -455,8 +464,9 @@ const BASE_CSS =
   `@media (min-aspect-ratio: 2/1){.deerpos{transform:translate(0,-100px)}}` +
   `@media (min-aspect-ratio: 7/3){.deerpos{transform:translate(0,-157px)}}`
 
-// Everything that never changes, built once.
-const FAR =
+// The parts that follow the snow depth, built once per depth (0..5).
+function far(d: number): string {
+  return (
   `<rect width="${W}" height="${H}" fill="url(#sky)"/>` +
   starfield() +
   SHOOTING +
@@ -467,36 +477,52 @@ const FAR =
   cloud(560, 330, 0.6, 'cl2') +
   mountains() +
   `<rect y="540" width="${W}" height="170" fill="url(#haze)"/>` +
-  forestBand() +
+  forestBand(d) +
   `<rect y="610" width="${W}" height="110" fill="url(#haze)"/>` +
   `<path d="M0 690C400 655 1200 655 1600 690V1000H0Z" fill="url(#ground)"/>` +
+  `<path d="M0 690C400 655 1200 655 1600 690V1000H0Z" fill="#eef4fd" opacity="${n(0.07 * d)}"/>` +
   `<path d="M792 655C760 760 600 880 430 1000L1180 1000C1000 880 860 760 812 655Z" fill="url(#road)"/>` +
-  tracks()
+  tracks(d)
+  )
+}
 
-const MID = MID_TREES.map(([x, b, h], k) => spruce(x, b, h, { fill: '#10243f', lit: '#9fb8de', shade: '#4d6690', seed: 300 + k })).join('')
+const mid = (d: number) =>
+  MID_TREES.map(([x, b, h], k) => spruce(x, b, h, { fill: '#10243f', lit: '#9fb8de', shade: '#4d6690', seed: 300 + k, snow: d })).join('')
 
-const NEAR =
+const near = (d: number) =>
   lantern(470, 846) +
   lantern(1130, 852) +
-  spruce(30, 1012, 980, { fill: '#0c1d33', lit: '#aebfdc', shade: '#3e557d', seed: 501 }) +
-  spruce(1605, 992, 900, { fill: '#0c1d33', lit: '#aebfdc', shade: '#3e557d', seed: 502 }) +
+  spruce(30, 1012, 980, { fill: '#0c1d33', lit: '#aebfdc', shade: '#3e557d', seed: 501, snow: d }) +
+  spruce(1605, 992, 900, { fill: '#0c1d33', lit: '#aebfdc', shade: '#3e557d', seed: 502, snow: d }) +
   `<path d="M0 905C80 862 200 872 262 912C300 940 320 980 332 1010H0Z" fill="url(#mound)"/>` +
   fence()
 
+const built = new Map<number, string[]>()
+
+function layers(d: number): string[] {
+  let l = built.get(d)
+  if (l === undefined) {
+    l = [
+      far(d),
+      CABINS.slice(0, 2).map(c => cabin(c, d)).join(''),
+      mid(d),
+      CABINS.slice(2).map(c => cabin(c, d)).join(''),
+      near(d),
+    ]
+    built.set(d, l)
+  }
+  return l
+}
+
 export function scene(w: Weather): string {
   const fall = snow(Math.max(0, Math.min(6, w.snow)), w.waiting)
-  const cap = 6 + w.drift * 2.5
+  const d = Math.max(0, Math.min(5, w.drift))
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">` +
     `<style>${BASE_CSS}${fall.css}</style>` +
     DEFS +
-    FAR +
-    CABINS.slice(0, 2).map(c => cabin(c, cap)).join('') +
-    MID +
-    CABINS.slice(2, 4).map(c => cabin(c, cap)).join('') +
-    CABINS.slice(4).map(c => cabin(c, cap)).join('') +
-    NEAR +
-    drift(w.drift) +
+    layers(d).join('') +
+    drift(d) +
     (w.waiting ? REINDEER : w.leaving ? REINDEER.replace('class="deer"', 'class="deer out"') : '') +
     BANK +
     fall.svg +
