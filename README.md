@@ -8,6 +8,8 @@ The scene reacts to the session:
 - **Snow piles up with context.** The drift along the bottom and the snow on the roofs grow as the context window fills.
 - **A reindeer peeks in when Claude is waiting for you.** When Claude finishes a turn, asks a question or needs permission, a reindeer rises from behind the snowbank in the bottom-right corner and looks at you, while the snow slows to a light sprinkle. It leaves when you send a message.
 
+- **Santa flies by.** Every 4 to 12 minutes, at a random time, Santa's sleigh and four reindeer cross the aurora, trailing a ribbon with the days left until Christmas. From Christmas Day it counts down to New Year instead.
+
 Light mode shows the same village at blue hour; dark mode shows it at night.
 
 ## Install
@@ -33,6 +35,7 @@ In the desktop app, where `/plugin` does not run: click **+** next to the prompt
 - `/snow demo` runs through every snowfall and drift level in about 45 seconds, then goes back to live.
 - `/snow 4 3` holds snowfall at 4/6 and the drift at 3/5.
 - `/snow live` goes back to following the real workload and context.
+- `/snow sleigh` sends Santa across the sky right away.
 
 The status line shows the current level, for example `❄❄❄ snowfall 3/6 · snowdrift 2/5 · context 34%`.
 

@@ -1,4 +1,5 @@
 import type { Weather } from '../types'
+import { SLEIGH_CSS, sleigh } from './sleigh'
 
 // The winter village, drawn as one SVG. Snowfall (0..6), ground drift (0..5)
 // and the peeking reindeer come from Weather; everything else stays put.
@@ -20,7 +21,7 @@ function rng(seed: number): () => number {
 const n = (v: number) => Math.round(v * 10) / 10
 
 // Snowflakes per level: a few lazy flakes up to a proper blizzard.
-const FLAKES = [10, 26, 48, 72, 100, 128, 150]
+const FLAKES = [10, 26, 48, 72, 98, 120, 138]
 
 // Calm snow while the reindeer waits: a light sprinkle of small flakes,
 // drifting down slowly whatever the level was.
@@ -258,7 +259,7 @@ function cabin(c: Cabin, d: number): string {
 function starfield(): string {
   const r = rng(3)
   let s = ''
-  for (let k = 0; k < 110; k++) {
+  for (let k = 0; k < 90; k++) {
     const x = i(r() * W)
     const y = i(Math.pow(r(), 1.4) * 560)
     const rad = n(0.5 + Math.pow(r(), 3) * 1.9)
@@ -514,14 +515,16 @@ function layers(d: number): string[] {
   return l
 }
 
-export function scene(w: Weather): string {
+export function scene(w: Weather, now: number): string {
   const fall = snow(Math.max(0, Math.min(6, w.snow)), w.waiting)
   const d = Math.max(0, Math.min(5, w.drift))
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">` +
-    `<style>${BASE_CSS}${fall.css}</style>` +
+    `<style>${BASE_CSS}${SLEIGH_CSS}${fall.css}</style>` +
     DEFS +
-    layers(d).join('') +
+    layers(d)[0] +
+    sleigh(w.sleigh, now) +
+    layers(d).slice(1).join('') +
     drift(d) +
     (w.waiting ? REINDEER : w.leaving ? REINDEER.replace('class="deer"', 'class="deer out"') : '') +
     BANK +

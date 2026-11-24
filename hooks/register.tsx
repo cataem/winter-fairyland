@@ -4,13 +4,14 @@ import type { EngineInterface, Register, ThemeSetArgs } from 'claude-code'
 import type { Weather } from '../types'
 import { makeColors } from './make-colors.js'
 import { scene } from './scene'
+import { FLIGHT_MS } from './sleigh'
 
 const SCENE = 'winter-fairyland'
 
 const weather = atom(
   { plugin: 'winter-fairyland', key: 'weather' } as const,
-  { snow: 1, drift: 0, waiting: false, leaving: false },
-  { shape: 'weather-2' },
+  { snow: 1, drift: 0, waiting: false, leaving: false, sleigh: 0 },
+  { shape: 'weather-3' },
 )
 
 // Icy blue by day, moonlit snow by night.
@@ -62,6 +63,10 @@ let leaving = false
 let leaveTimer: { cancel: () => void } | null = null
 // The weather held while it sinks, so no redraw restarts the animation.
 let frozen: Weather | null = null
+// Santa's sleigh: when the current flight began (0 when none), and the
+// timer for the next one, which comes at a random time.
+let sleighStart = 0
+let sleighTimers: { cancel: () => void }[] = []
 const SINK_MS = 1800
 // While /snow pins or demos the weather, this wins over the live figures.
 let pinned: Weather | null = null
@@ -70,15 +75,15 @@ let demoTimers: { cancel: () => void }[] = []
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
 function target(): Weather {
-  if (pinned !== null) return pinned
-  if (leaving && !waiting && frozen !== null) return frozen
+  if (pinned !== null) return { ...pinned, sleigh: sleighStart }
+  if (leaving && !waiting && frozen !== null) return { ...frozen, sleigh: sleighStart }
   const work = clamp(
     (mainRunning ? 0.3 : 0) + Math.min(0.3, agentsRunning * 0.15) + Math.min(0.3, toolsRunning * 0.12) + activity,
     0,
     1,
   )
   const snow = Math.round(6 * clamp(0.65 * work + 0.35 * contextShare, 0, 1))
-  return { snow, drift: Math.round(5 * contextShare), waiting, leaving: leaving && !waiting }
+  return { snow, drift: Math.round(5 * contextShare), waiting, leaving: leaving && !waiting, sleigh: sleighStart }
 }
 
 
@@ -91,7 +96,7 @@ async function refresh($: EngineInterface): Promise<void> {
     if (now.waiting && !next.waiting && pinned === null) {
       // it was up and is no longer wanted: let it sink first
       leaving = true
-      frozen = { snow: now.snow, drift: now.drift, waiting: false, leaving: true }
+      frozen = { snow: now.snow, drift: now.drift, waiting: false, leaving: true, sleigh: 0 }
       leaveTimer?.cancel()
       leaveTimer = $.clock.after(SINK_MS, () => {
         leaving = false
@@ -110,7 +115,8 @@ async function refresh($: EngineInterface): Promise<void> {
       now.snow === next.snow &&
       now.drift === next.drift &&
       now.waiting === next.waiting &&
-      now.leaving === next.leaving
+      now.leaving === next.leaving &&
+      now.sleigh === next.sleigh
     ) {
       return
     }
@@ -132,11 +138,35 @@ function stopDemo(): void {
   demoTimers = []
 }
 
+function stopSleigh(): void {
+  for (const t of sleighTimers) t.cancel()
+  sleighTimers = []
+}
+
+// Sends the sleigh across now, then waits a random 4 to 12 minutes for the next.
+async function flySleigh($: EngineInterface): Promise<void> {
+  stopSleigh()
+  sleighStart = await $.clock.now()
+  await refresh($)
+  sleighTimers.push(
+    $.clock.after(FLIGHT_MS + 500, () => {
+      sleighStart = 0
+      void refresh($)
+      scheduleSleigh($, 240_000 + Math.random() * 480_000)
+    }),
+  )
+}
+
+function scheduleSleigh($: EngineInterface, ms: number): void {
+  stopSleigh()
+  sleighTimers.push($.clock.after(Math.round(ms), () => void flySleigh($)))
+}
+
 // Snowfall climbs 0 to 6 while the drift rises 0 to 5, then the snow eases
 // off over the deep drift, then live weather comes back.
 const DEMO: Weather[] = [
-  ...[0, 1, 2, 3, 4, 5, 6].map(s => ({ snow: s, drift: Math.round((s * 5) / 6), waiting: false, leaving: false })),
-  ...[5, 4, 3, 2, 1, 0].map(s => ({ snow: s, drift: 5, waiting: false, leaving: false })),
+  ...[0, 1, 2, 3, 4, 5, 6].map(s => ({ snow: s, drift: Math.round((s * 5) / 6), waiting: false, leaving: false, sleigh: 0 })),
+  ...[5, 4, 3, 2, 1, 0].map(s => ({ snow: s, drift: 5, waiting: false, leaving: false, sleigh: 0 })),
 ]
 const STEP_MS = 3500
 
@@ -161,8 +191,10 @@ export const register: Register = on => {
     }
     await $.command.register({
       name: 'snow',
-      description: 'Winter fairyland: "demo" runs through every snowfall and drift level; "<snow 0-6> <drift 0-5>" pins one; "live" goes back to real workload',
+      description: 'Winter fairyland: "demo" runs through every snowfall and drift level; "<snow 0-6> <drift 0-5>" pins one; "live" goes back to real workload; "sleigh" sends Santa across now',
     })
+    sleighStart = 0
+    scheduleSleigh($, 60_000 + Math.random() * 120_000)
     $.clock.every(2500, () => {
       activity *= 0.8
       if (activity < 0.01) activity = 0
@@ -240,6 +272,10 @@ export const register: Register = on => {
 
   on('command.run', { command: 'snow' }, async ($, e) => {
     const args = e.args.trim().toLowerCase()
+    if (args === 'sleigh') {
+      await flySleigh($)
+      return { text: "Santa's sleigh is on its way across the sky. Next one at a random time, 4 to 12 minutes after it lands." }
+    }
     stopDemo()
     if (args === 'live' || args === 'off') {
       pinned = null
@@ -248,7 +284,7 @@ export const register: Register = on => {
     }
     const nums = args.match(/^(\d)\s+(\d)$/)
     if (nums !== null) {
-      pinned = { snow: clamp(Number(nums[1]), 0, 6), drift: clamp(Number(nums[2]), 0, 5), waiting: false, leaving: false }
+      pinned = { snow: clamp(Number(nums[1]), 0, 6), drift: clamp(Number(nums[2]), 0, 5), waiting: false, leaving: false, sleigh: 0 }
       await refresh($)
       return { text: `Pinned snowfall ${pinned.snow}/6, snowdrift ${pinned.drift}/5. "/snow live" to undo.` }
     }
@@ -278,10 +314,11 @@ export const register: Register = on => {
     }
     const { Svg } = $.ui.resolve(e)
     const w = await read($, weather)
+    const now = await $.clock.now()
     const alt = w.waiting
       ? 'A snowy mountain village of log cabins under the northern lights; a reindeer peeks over a snowbank'
       : 'A snowy mountain village of log cabins under the northern lights, with falling snow'
 
-    return <Svg source={scene(w)} alt={alt} isInteractive />
+    return <Svg source={scene(w, now)} alt={alt} isInteractive />
   })
 }
