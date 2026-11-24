@@ -1,6 +1,6 @@
 {
   "name": "winter-fairyland",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A snowy winter village backdrop: snowfall follows Claude's workload, drifts pile up with context, and a reindeer peeks in when Claude waits for you.",
   "types": "./types/index.d.ts"
 }
