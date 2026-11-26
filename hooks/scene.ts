@@ -25,45 +25,68 @@ const FLAKES = [10, 26, 48, 72, 98, 120, 138]
 
 // Calm snow while the reindeer waits: a light sprinkle of small flakes,
 // drifting down slowly whatever the level was.
-function snow(level: number, calm: boolean): { css: string; svg: string } {
-  const r = rng(7)
+//
+// The scene is redrawn whenever the weather changes, and every redraw starts
+// its CSS animations over. So each flake's place in its fall is worked out
+// from the clock (as the sleigh's is): a redraw picks the fall up where it
+// was instead of sending every flake back to the top. Each flake also keeps
+// its own speed and wind, set by the level it first appears at, and has a
+// random stream of its own, so a level change only adds or removes flakes;
+// the ones already falling carry on.
+const MOTION = [0, 1, 2, 3, 4, 5, 6].map(l => ({ speed: 1 + l * 0.22, wind: 20 + l * 45 }))
+const CALM = { speed: 0.45, wind: 12 }
+const KINDS = [1, 0.6, 1.3] // share of the level's wind for each drift kind
+const SNOW_LAYERS = [
+  { share: 0.4, rMin: 1.2, rMax: 2.2, dMin: 17, dMax: 24, op: 0.55, sway: false },
+  { share: 0.35, rMin: 2.2, rMax: 3.4, dMin: 11, dMax: 16, op: 0.8, sway: true },
+  { share: 0.25, rMin: 3.4, rMax: 5, dMin: 7, dMax: 10.5, op: 0.95, sway: true },
+]
+const SWAY_S = 8 // one full sway, there and back
+
+// The time already run of a loop `period` seconds long, as a negative delay.
+const into = (t: number, period: number) => `-${n(((t % period) + period) % period)}s`
+
+function snow(level: number, calm: boolean, now: number): { css: string; svg: string } {
+  const t = now / 1000
   const count = calm ? 28 : (FLAKES[level] ?? 10)
-  const speed = calm ? 0.45 : 1 + level * 0.22
-  const wind = calm ? 12 : 20 + level * 45
   const size = calm ? 0.65 : 1
-  const layers = [
-    { share: 0.4, rMin: 1.2, rMax: 2.2, dMin: 17, dMax: 24, op: 0.55, sway: false },
-    { share: 0.35, rMin: 2.2, rMax: 3.4, dMin: 11, dMax: 16, op: 0.8, sway: true },
-    { share: 0.25, rMin: 3.4, rMax: 5, dMin: 7, dMax: 10.5, op: 0.95, sway: true },
-  ]
   let svg = ''
-  for (const layer of layers) {
+  SNOW_LAYERS.forEach((layer, li) => {
     const k = Math.round(count * layer.share)
     let flakes = ''
     for (let j = 0; j < k; j++) {
+      const r = rng(7 + li * 1000 + j)
+      // the level this flake first appears at sets how it moves
+      const born = calm ? -1 : FLAKES.findIndex(c => Math.round(c * layer.share) > j)
+      const m = born < 0 ? CALM : MOTION[born]!
+      const kind = Math.floor(r() * 3)
+      const wind = m.wind * KINDS[kind]!
       const x = Math.round(r() * (W + wind) - wind)
-      const y = Math.round(r() * H)
       const rad = n((layer.rMin + r() * (layer.rMax - layer.rMin)) * size)
-      const dur = n((layer.dMin + r() * (layer.dMax - layer.dMin)) / speed)
-      const delay = n(-r() * dur)
-      const kind = ['fa', 'fb', 'fc'][Math.floor(r() * 3)]
+      const dur = n((layer.dMin + r() * (layer.dMax - layer.dMin)) / m.speed)
+      const phase = r() * dur
+      // at rest (reduced motion) the flake keeps a scattered place
+      const rest = Math.round((phase / dur) * H)
       const flake = `<circle cx="${x}" cy="-20" r="${rad}"/>`
       const inner = layer.sway ? `<g class="sway w${j % 3}">${flake}</g>` : flake
-      flakes += `<g class="fall ${kind}" transform="translate(0 ${y})" style="animation-duration:${dur}s;animation-delay:${delay}s">${inner}</g>`
+      // kept short: the heaviest scene sits close to the size limit
+      flakes += `<g transform="translate(0 ${rest})" style="animation:f${born < 0 ? 'c' : born}${kind} ${dur}s ${into(t + phase, dur)} linear infinite">${inner}</g>`
     }
     svg += `<g fill="#fff" opacity="${layer.op}">${flakes}</g>`
-  }
-  // The outer group falls from the top; at rest (reduced motion) it keeps its
-  // scattered place; the circle's cx carries its column.
-  const css =
-    `.fall{animation-timing-function:linear;animation-iteration-count:infinite}` +
-    `.w1{animation-delay:-1.3s}.w2{animation-delay:-2.7s}` +
-    `.fa{animation-name:fa}.fb{animation-name:fb}.fc{animation-name:fc}` +
-    `@keyframes fa{from{transform:translate(0,0)}to{transform:translate(${wind}px,1080px)}}` +
-    `@keyframes fb{from{transform:translate(0,0)}to{transform:translate(${n(wind * 0.6)}px,1080px)}}` +
-    `@keyframes fc{from{transform:translate(0,0)}to{transform:translate(${n(wind * 1.3)}px,1080px)}}`
-  return { css, svg }
+  })
+  // three sway groups, each carrying on from where the clock has it
+  const sway = [0, 1.3, 2.7].map((off, k) => `.w${k}{animation-delay:${into(t + off, SWAY_S)}}`).join('')
+  return { css: SNOW_CSS + sway, svg }
 }
+
+// One fall per motion and drift kind: down the whole scene, blown sideways.
+const SNOW_CSS = [...MOTION.map((m, l) => [String(l), m] as const), ['c', CALM] as const]
+  .flatMap(([id, m]) =>
+    KINDS.map(
+      (share, kind) => `@keyframes f${id}${kind}{from{transform:translate(0,0)}to{transform:translate(${n(m.wind * share)}px,1080px)}}`,
+    ),
+  )
+  .join('')
 
 // The reindeer rises from behind a snowbank in the bottom-right corner,
 // looking straight at the person.
@@ -135,16 +158,17 @@ function spruce(x: number, base: number, h: number, o: SpruceOpts): string {
     let lit = ''
     let shade = ''
     const sn = o.snow ?? 0
-    // deeper snow: wider clumps that sit higher and hang lower
-    const up = 0.7 + 0.08 * sn
-    const low = 0.36 - 0.05 * sn
+    // Deeper snow: fuller clumps that stay on their own tier. The top edge
+    // rises a little and the underside sags a little; neither reaches the
+    // tier above, and no clump runs past its branch tip.
+    const up = 0.75 + 0.03 * sn
+    const low = 0.32 - 0.03 * sn
     for (const { y, w: w0 } of rows) {
       const j = 0.85 + r() * 0.3
-      const w = w0 * Math.min(1.02, 0.45 + 0.11 * sn + r() * 0.3)
-      lit += `M${i(x + 0.1 * w)} ${i(y - (0.62 + 0.05 * sn) * s)}Q${i(x + 0.55 * w)} ${i(y - up * s * j)} ${i(x + 0.97 * w)} ${i(y)}Q${i(x + 0.6 * w)} ${i(y - low * s)} ${i(x + 0.1 * w)} ${i(y - (0.46 - 0.03 * sn) * s)}Z`
-      if (o.shade !== undefined && sn > 0) {
-        const v = w * 0.85
-        shade += `M${i(x - 0.1 * v)} ${i(y - (0.6 + 0.05 * sn) * s)}Q${i(x - 0.5 * v)} ${i(y - (up - 0.06) * s * j)} ${i(x - 0.92 * v)} ${i(y - 0.02 * s)}Q${i(x - 0.55 * v)} ${i(y - (low - 0.02) * s)} ${i(x - 0.1 * v)} ${i(y - (0.48 - 0.03 * sn) * s)}Z`
+      const w = w0 * Math.min(0.97, 0.6 + 0.05 * sn + r() * 0.3)
+      lit += `M${i(x + 0.1 * w)} ${i(y - 0.62 * s)}Q${i(x + 0.55 * w)} ${i(y - up * s * j)} ${i(x + 0.97 * w)} ${i(y)}Q${i(x + 0.6 * w)} ${i(y - low * s)} ${i(x + 0.1 * w)} ${i(y - (0.42 - 0.02 * sn) * s)}Z`
+      if (o.shade !== undefined) {
+        shade += `M${i(x - 0.1 * w)} ${i(y - 0.6 * s)}Q${i(x - 0.5 * w)} ${i(y - (up - 0.07) * s * j)} ${i(x - 0.92 * w)} ${i(y - 0.02 * s)}Q${i(x - 0.55 * w)} ${i(y - (low - 0.02) * s)} ${i(x - 0.1 * w)} ${i(y - (0.44 - 0.02 * sn) * s)}Z`
       }
     }
     out += `<path d="${lit}" fill="${o.lit}"/>`
@@ -516,7 +540,7 @@ function layers(d: number): string[] {
 }
 
 export function scene(w: Weather, now: number): string {
-  const fall = snow(Math.max(0, Math.min(6, w.snow)), w.waiting)
+  const fall = snow(Math.max(0, Math.min(6, w.snow)), w.waiting, now)
   const d = Math.max(0, Math.min(5, w.drift))
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">` +
